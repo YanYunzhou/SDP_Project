@@ -177,6 +177,7 @@ def plot_graph(g):
              np.concatenate((poseEdgesP1[:, 1], poseEdgesP2[:, 1])), 'r')
 
     plt.draw()
+    plt.show()
     plt.pause(1)
 
     return
