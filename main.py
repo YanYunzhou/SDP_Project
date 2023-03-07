@@ -20,14 +20,19 @@ def import_dataset():
     for nodeId in nodes:
         dimension = len(nodes[nodeId])
         offset = lut[nodeId]
+        node_pose=nodes[nodeId]
         if dimension==2:
             print("It is landmark!")
-            print(nodes[nodeId])
+            print(node_pose)
         else:
             print("It is robot pose!")
-            print(nodes[nodeId])
+            print(node_pose)
     for edge in edges:
         edge_type=edge[0]
+        fromNode=edge[1]
+        toNode=edge[2]
+        measurement=edge[3]
+        information=edge[4]
 def plot_graph():
     filename = 'data/dlr.g2o'
     graph = ex.read_graph_g2o(filename)
