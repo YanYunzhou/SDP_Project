@@ -45,6 +45,9 @@ def stack_p_r(nodes,x,lut):
         p_stack=np.append(p_stack,translation)
         r_stack=np.append(r_stack,angle_v)
     return p_stack,r_stack
+def concat_pr(p_stack,r_stack):
+    pr=np.append(p_stack,r_stack)
+    return pr
 def compute_loss():
     filename = 'data/intel.g2o'
     graph = ex.read_graph_g2o(filename)
@@ -53,10 +56,20 @@ def compute_loss():
     x = graph.x
     lut = graph.lut
     A=compute_incidence_matrix(edges,nodes)
+    A2=A[:,1:np.shape(A)[1]]
     A_kron=compute_incidence_kron(A)
+    A_kron_2=compute_incidence_kron(A2)
     p_stack, r_stack = stack_p_r(nodes, x,lut)
     D_block =compute_block_D(edges,nodes)
-    loss=loss_function_3(A_kron,D_block,p_stack,r_stack)
+    U=compute_U(edges,nodes)
+    Q=np.matmul(np.transpose(D_block),D_block)+np.matmul(np.transpose(U),U)
+    L=np.matmul(np.transpose(A_kron),A_kron)
+    L2=np.matmul(np.transpose(A_kron_2),A_kron_2)
+    W1=np.block([[L,np.matmul(np.transpose(A_kron),D_block)],[np.matmul(np.transpose(D_block),A_kron),Q]])
+    W2=np.block([[L2,np.matmul(np.transpose(A_kron_2),D_block)],[np.matmul(np.transpose(D_block),A_kron_2),Q]])
+    pr = concat_pr(p_stack, r_stack)
+    pr_2=pr[2:np.shape(pr)[0]]
+    loss=loss_function_4(W2,pr_2)
     print(loss)
     loss=loss_function_1(x,edges,lut)
     print(loss)
@@ -98,6 +111,23 @@ def compute_block_D(edges,nodes):
         D_block[2*edge_index:2*edge_index+2,2*fromNode:2*fromNode+2]=-D
         edge_index=edge_index+1
     return D_block
+def compute_U(edges,nodes):
+    edge_num = len(edges)
+    node_num = len(nodes)
+    U= np.zeros((2 * edge_num, 2 * node_num))
+    edge_index = 0
+    for edge in edges:
+        edge_type = edge[0]
+        fromNode = edge[1]
+        toNode = edge[2]
+        measurement = edge[3]
+        translation = measurement[0:2]
+        angle=measurement[2]
+        rotation=angle_to_mat(angle)
+        U[2*edge_index:2*edge_index+2,2*fromNode:2*fromNode+2]=-rotation
+        U[2 * edge_index:2 * edge_index + 2, 2 * toNode:2 * toNode + 2]=np.identity(2)
+        edge_index = edge_index + 1
+    return U
 def loss_function_1(x,edges,lut):
     loss=0
     for edge in edges:
@@ -149,8 +179,12 @@ def loss_function_2(x,edges,lut):
         loss = loss +  np.linalg.norm(to_rotation - np.matmul(rotation_matrix, from_rotation)) * np.linalg.norm(to_rotation - np.matmul(rotation_matrix, from_rotation))
 
     return
-def loss_function_3(A_kron,D_block,p_stack,r_stack):
+def loss_function_3(A_kron,D_block,p_stack,r_stack,U):
     loss=np.linalg.norm(np.matmul(A_kron,p_stack)+np.matmul(D_block,r_stack))*np.linalg.norm(np.matmul(A_kron,p_stack)+np.matmul(D_block,r_stack))
+    loss=loss+np.linalg.norm(np.matmul(U,r_stack))*np.linalg.norm(np.matmul(U,r_stack))
+    return loss
+def loss_function_4(W1,pr):
+    loss=np.dot(pr,np.matmul(W1,pr))
     return loss
 def plot_graph():
     filename = 'data/intel.g2o'
