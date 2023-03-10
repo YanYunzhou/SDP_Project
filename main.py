@@ -9,7 +9,8 @@ import ex2 as ex
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-def import_dataset():
+import scipy.sparse
+def import_dataset_intel():
     filename = 'data/intel.g2o'
     graph = ex.read_graph_g2o(filename)
     nodes=graph.nodes
@@ -34,6 +35,29 @@ def import_dataset():
         translation=measurement[0:2]
         angle=measurement[2]
         rotation_matrix=np.array([[math.cos(angle),-math.sin(angle)],[math.sin(angle),math.cos(angle)]])
+def simulation_dict():
+    filename = 'data/simulation-pose-pose.g2o'
+    graph = ex.read_graph_g2o(filename)
+    nodes = graph.nodes
+    edges = graph.edges
+    x = graph.x
+    lut = graph.lut
+    nodes_num = len(nodes)
+    edges_num = len(edges)
+    lut_num = len(lut)
+    node_count=0
+    node_dict={}
+    for nodeId in nodes:
+        node=nodes[nodeId]
+        node_dict[nodeId]=node_count
+        node_count=node_count+1
+    return node_dict
+def vector_to_complex(vec):
+    x=vec[0]
+    y=vec[1]
+    vec_norm=np.linalg.norm(vec)
+    complex=(x+1j*y)/vec_norm
+    return complex
 def stack_p_r(nodes,x,lut):
     p_stack=np.array([])
     r_stack=np.array([])
@@ -48,6 +72,13 @@ def stack_p_r(nodes,x,lut):
 def concat_pr(p_stack,r_stack):
     pr=np.append(p_stack,r_stack)
     return pr
+def compute_pr_complex(P_stack):
+    num=np.shape(P_stack)[0]/2
+    num=int(num)
+    p_complex=np.array([])
+    for i in range(num):
+        p_complex=np.append(p_complex,vector_to_complex(P_stack[2*i:2*i+2]))
+    return p_complex
 def compute_loss():
     filename = 'data/intel.g2o'
     graph = ex.read_graph_g2o(filename)
@@ -73,6 +104,17 @@ def compute_loss():
     print(loss)
     loss=loss_function_1(x,edges,lut)
     print(loss)
+    pr_convex=compute_pr_complex(pr_2)
+    W_complex=compute_W_complex(W2)
+    loss = loss_function_5(W_complex, pr_convex)
+    print(loss)
+    eigen,eigen_vec=np.linalg.eig(W_complex)
+    print(eigen)
+    print(np.shape(eigen))
+    for i in range(np.shape(eigen)[0]):
+        print(eigen[i])
+
+
 def compute_incidence_matrix(edges,nodes):
     edge_num=len(edges)
     node_num=len(nodes)
@@ -80,8 +122,9 @@ def compute_incidence_matrix(edges,nodes):
     for i in range(edge_num):
         fromNode = edges[i][1]
         toNode = edges[i][2]
-        A[i,fromNode]=-1
-        A[i,toNode]=1
+        if toNode<node_num:
+            A[i, fromNode] = -1
+            A[i, toNode] = 1
     return A
 def compute_incidence_kron(A):
     I=np.identity(2)
@@ -128,6 +171,23 @@ def compute_U(edges,nodes):
         U[2 * edge_index:2 * edge_index + 2, 2 * toNode:2 * toNode + 2]=np.identity(2)
         edge_index = edge_index + 1
     return U
+def matrix_to_complex(mat):
+    a=np.sqrt(mat[0,0]*mat[0,0]+mat[0,1]*mat[0,1])
+    mat=mat/a
+    complex_num=a*(mat[0,0]+1j*mat[1,0])
+    return complex_num
+def compute_W_complex(W):
+    W_height=int(np.shape(W)[0]/2)
+    W_width=int(np.shape(W)[1]/2)
+    W_complex=np.zeros((W_height,W_width),dtype=complex)
+    count=0
+    for i in range(W_height):
+        for j in range(W_width):
+            w_complex=W[2*i:2*i+2,2*j:2*j+2]
+            if np.linalg.det(w_complex)!=0:
+                W_complex[i,j]=matrix_to_complex(w_complex)
+                count=count+1
+    return W_complex
 def loss_function_1(x,edges,lut):
     loss=0
     for edge in edges:
@@ -185,6 +245,9 @@ def loss_function_3(A_kron,D_block,p_stack,r_stack,U):
     return loss
 def loss_function_4(W1,pr):
     loss=np.dot(pr,np.matmul(W1,pr))
+    return loss
+def loss_function_5(W_complex,p_complex):
+    loss = np.dot(p_complex.conjugate(), np.matmul(W_complex, p_complex))
     return loss
 def plot_graph():
     filename = 'data/intel.g2o'
